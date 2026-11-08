@@ -20,6 +20,10 @@ The first startup builds the app image and pulls the Ollama model. Once the app 
 3. Play the result. To correct a line, choose its timestamp under **Review and edit one line**, edit the Roman Urdu, and select **Preview edited line**. Select **Apply to video** once the preview is ready.
 4. Download the MP4 and transcript before closing the app or starting another job.
 
+## Download the original video
+
+To save the original video with its audio, confirm you have permission to download it and choose **Download original video**. This mode prepares an MP4 up to 480p, allows videos up to three hours, and skips the dubbing pipeline. Once it is ready, select **Download original MP4**.
+
 ## Project guide
 
 | Guide | Contents |

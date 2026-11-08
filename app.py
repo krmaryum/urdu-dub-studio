@@ -10,7 +10,7 @@ from uuid import uuid4
 
 from flask import Flask, jsonify, render_template_string, request, send_file
 
-from dubbing import MAX_VIDEO_MINUTES, DubError, apply_line, make_dub, preview_line
+from dubbing import MAX_DOWNLOAD_MINUTES, MAX_VIDEO_MINUTES, DubError, apply_line, download_video, make_dub, preview_line
 
 app = Flask(__name__, static_folder=None)
 app.config.update(MAX_CONTENT_LENGTH=4096, TRUSTED_HOSTS=["127.0.0.1", "localhost"])
@@ -21,7 +21,7 @@ job = {}
 
 
 def job_status():
-    return {key: job[key] for key in ("id", "status", "stage", "revision") if key in job}
+    return {key: job[key] for key in ("id", "status", "stage", "revision", "mode") if key in job}
 
 
 def youtube_url(value):
@@ -49,29 +49,36 @@ def youtube_url(value):
     return None
 
 
-def process(source, output):
+def process(source, output, mode):
     def update(stage):
         with lock:
             job["stage"] = stage
 
     try:
-        rate, lines = make_dub(source, output, update)
+        if mode == "download":
+            with TemporaryDirectory(prefix="source-", dir=output.parent) as temp:
+                video, _ = download_video(source, Path(temp), original=True)
+                video.replace(output)
+            result = {"stage": "Your original video is ready to download."}
+        else:
+            rate, lines = make_dub(source, output, update)
+            result = {"stage": "Your dubbed video and transcript are ready.", "rate": rate, "lines": lines}
     except DubError as error:
         with lock:
             job.update(status="failed", stage=str(error))
     except Exception:
         app.logger.exception("Dubbing job failed")
         with lock:
-            job.update(status="failed", stage="Dubbing failed. Check the WSL terminal for details.")
+            job.update(status="failed", stage="Could not process the video. Check the app logs for details.")
     else:
         with lock:
-            job.update(status="ready", stage="Your dubbed video and transcript are ready.", rate=rate, lines=lines)
+            job.update(status="ready", **result)
 
 
 @app.get("/")
 def index():
     page = Path(__file__).with_name("index.html").read_text(encoding="utf-8")
-    return render_template_string(page, max_video_minutes=MAX_VIDEO_MINUTES)
+    return render_template_string(page, max_video_minutes=MAX_VIDEO_MINUTES, max_download_hours=MAX_DOWNLOAD_MINUTES // 60)
 
 
 @app.post("/api/jobs")
@@ -81,28 +88,34 @@ def create_job():
     payload = request.get_json(silent=True)
     if not isinstance(payload, dict):
         return jsonify(error="Invalid request."), 400
+    mode = payload.get("mode", "dub")
+    if mode not in ("dub", "download"):
+        return jsonify(error="Choose dubbing or original download."), 400
     source = youtube_url(payload.get("url"))
     if not source:
         return jsonify(error="Paste a valid HTTPS link to a YouTube video or Short."), 400
     if payload.get("authorized") is not True:
-        return jsonify(error="Confirm that you have permission to dub the video."), 400
+        action = "download" if mode == "download" else "dub"
+        return jsonify(error=f"Confirm that you have permission to {action} the video."), 400
 
     with lock:
         if job.get("status") == "working" or job.get("busy"):
             return jsonify(error="A dub or line edit is already in progress."), 409
         job_id = uuid4().hex
         folder = Path(workspace.name) / job_id
-        output = folder / "0" / "Urdu-Dub.mp4"
+        filename = "Original-Video.mp4" if mode == "download" else "Urdu-Dub.mp4"
+        output = folder / "0" / filename
         output.parent.mkdir(parents=True)
         old_folder = job.get("folder")
         if old_folder:
             shutil.rmtree(old_folder, ignore_errors=True)
         job.clear()
         job.update(
-            id=job_id, status="working", stage="Preparing to import the video.",
-            revision=0, folder=folder, output=output,
+            id=job_id, status="working",
+            stage="Downloading the original video." if mode == "download" else "Preparing to import the video.",
+            revision=0, folder=folder, output=output, mode=mode,
         )
-        pool.submit(process, source, output)
+        pool.submit(process, source, output, mode)
         return jsonify(job_status()), 202
 
 
@@ -115,7 +128,7 @@ def get_job():
 @app.get("/api/jobs/<job_id>/lines")
 def review_lines(job_id):
     with lock:
-        if job.get("id") != job_id or job.get("status") != "ready":
+        if job.get("id") != job_id or job.get("status") != "ready" or job.get("mode") == "download":
             return jsonify(error="This dub is unavailable."), 404
         return jsonify(lines=[
             {"start": line.start / job["rate"], "english": line.english, "roman": line.roman}
@@ -133,7 +146,7 @@ def create_preview(job_id, index):
         return jsonify(error="Enter a Roman Urdu line up to 800 characters."), 400
     roman = " ".join(roman.split())
     with lock:
-        if job.get("id") != job_id or job.get("status") != "ready" or index >= len(job["lines"]):
+        if job.get("id") != job_id or job.get("status") != "ready" or index >= len(job.get("lines", ())):
             return jsonify(error="This line is unavailable."), 404
         if job.get("busy"):
             return jsonify(error="Another edit is in progress."), 409
@@ -211,14 +224,14 @@ def video(job_id):
             job["output"],
             mimetype="video/mp4",
             as_attachment=request.args.get("download") == "1",
-            download_name="Urdu-Dub.mp4",
+            download_name=job["output"].name,
         )
 
 
 @app.get("/transcript/<job_id>")
 def transcript(job_id):
     with lock:
-        if job.get("id") != job_id or job.get("status") != "ready":
+        if job.get("id") != job_id or job.get("status") != "ready" or job.get("mode") == "download":
             return jsonify(error="This transcript is unavailable."), 404
         return send_file(
             job["output"].with_suffix(".txt"),

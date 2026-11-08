@@ -29,7 +29,7 @@ except ValueError:
     raise SystemExit("URDU_DUB_MAX_MINUTES must be a whole number from 1 to 30.") from None
 
 MAX_SECONDS = MAX_VIDEO_MINUTES * 60
-VIDEO_LIMIT_MESSAGE = f"Choose a video up to {MAX_VIDEO_MINUTES} minutes long."
+MAX_DOWNLOAD_MINUTES = 180
 MAX_UNIT_SECONDS = 10
 MAX_UNIT_WORDS = 25
 PREFERRED_MAX_TEMPO = 1.25
@@ -160,29 +160,37 @@ def run(command, error, timeout=180, input_data=None):
         raise DubError(error) from exc
 
 
-def download_video(source, folder):
+def download_video(source, folder, *, original=False):
+    max_minutes = MAX_DOWNLOAD_MINUTES if original else MAX_VIDEO_MINUTES
+    limit_message = f"Choose a video up to {max_minutes} minutes long."
+    formats = "bv[height<=480][ext=mp4]+ba[ext=m4a]"
+    if original:
+        formats += "/b[height<=480][ext=mp4]"
+    else:
+        formats += "/b[height<=480]/bv[height<=480]+ba"
     for program in ("ffmpeg", "ffprobe", "deno"):
         if not shutil.which(program):
             raise DubError(f"{program} was not found. Check the setup steps in the README.")
 
     run([
         sys.executable, "-m", "yt_dlp", "--ignore-config", "--no-playlist",
-        "--match-filters", f"duration <= {MAX_SECONDS} & !is_live",
+        "--match-filters", f"duration <= {max_minutes * 60} & !is_live",
         "--socket-timeout", "15", "--retries", "2", "--fragment-retries", "2",
-        "--merge-output-format", "mp4", "-f",
-        "bv[height<=480][ext=mp4]+ba[ext=m4a]/b[height<=480]/bv[height<=480]+ba",
+        "--merge-output-format", "mp4", "-f", formats,
         "-o", str(folder / "source.%(ext)s"), "--", source,
     ], "Could not import the YouTube video. Check the link, access and yt-dlp version.",
-        timeout=max(180, MAX_VIDEO_MINUTES * 36))
+        timeout=max(180, max_minutes * 36))
     video = next((p for p in folder.glob("source.*") if p.suffix in {".mp4", ".mkv", ".webm"}), None)
     if video is None:
-        raise DubError(f"{VIDEO_LIMIT_MESSAGE} Live streams are excluded.")
+        raise DubError(f"{limit_message} Live streams are excluded.")
+    if original and video.suffix != ".mp4":
+        raise DubError("No compatible MP4 format was available for this video.")
     duration = float(run([
         "ffprobe", "-v", "error", "-show_entries", "format=duration",
         "-of", "default=noprint_wrappers=1:nokey=1", str(video),
     ], "Could not read the video duration."))
-    if not 0 < duration <= MAX_SECONDS + 1:
-        raise DubError(VIDEO_LIMIT_MESSAGE)
+    if not 0 < duration <= max_minutes * 60 + 1:
+        raise DubError(limit_message)
     return video, duration
 
 

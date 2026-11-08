@@ -33,15 +33,18 @@ button:disabled{opacity:.58;cursor:wait}:focus-visible{outline:2px solid white;o
       <form id="form">
         <label for="url">YouTube video URL</label>
         <input class="url" id="url" type="url" placeholder="https://www.youtube.com/watch?v=…" required maxlength="1500" aria-describedby="hint">
-        <p class="hint" id="hint">English video or Short, up to {{ max_video_minutes }} minutes.</p>
-        <label class="confirm"><input id="permission" type="checkbox" required> I have permission to download and dub this video.</label>
-        <button id="start" type="submit">Start dubbing</button>
+        <p class="hint" id="hint">English video or Short, up to {{ max_video_minutes }} minutes for dubbing. Original downloads up to {{ max_download_hours }} hours.</p>
+        <label class="confirm"><input id="permission" type="checkbox" required> I have permission to download this video and to dub it if I choose dubbing.</label>
+        <div class="downloads">
+          <button id="start" type="submit" value="dub">Start dubbing</button>
+          <button id="original" type="submit" value="download">Download original video</button>
+        </div>
         <p id="error" class="error" role="alert" hidden></p>
       </form>
     </section>
     <section class="panel" aria-labelledby="result-title">
       <h2 id="result-title">Dubbed video</h2>
-      <div class="result"><p id="status" role="status">Dubbing progress will appear here.</p></div>
+      <div class="result"><p id="status" role="status">Progress will appear here.</p></div>
       <video id="player" controls playsinline hidden></video>
       <div class="downloads">
         <a id="download" hidden>Download MP4</a>
@@ -76,18 +79,28 @@ function showError(message) {
 }
 function show(job) {
   if (!job.id) return;
+  const original = job.mode === 'download';
+  get('result-title').textContent = original ? 'Original video' : 'Dubbed video';
   get('status').textContent = job.stage;
-  get('start').disabled = job.status === 'working';
+  setSubmitBusy(job.status === 'working');
   if (job.status === 'ready') {
     const path = '/video/' + encodeURIComponent(job.id);
     const revision = '?v=' + job.revision;
     if (get('player').getAttribute('src') !== path + revision) get('player').src = path + revision;
     get('player').hidden = false;
     get('download').href = path + revision + '&download=1';
+    get('download').textContent = original ? 'Download original MP4' : 'Download MP4';
     get('download').hidden = false;
-    get('transcript').href = '/transcript/' + encodeURIComponent(job.id) + revision;
-    get('transcript').hidden = false;
-    if (reviewJob !== job.id) loadReview(job.id);
+    get('transcript').hidden = original;
+    if (original) {
+      get('review').hidden = true;
+      reviewJob = null;
+      reviewLines = [];
+      clearPreview();
+    } else {
+      get('transcript').href = '/transcript/' + encodeURIComponent(job.id) + revision;
+      if (reviewJob !== job.id) loadReview(job.id);
+    }
   } else {
     get('player').hidden = true;
     get('download').hidden = true;
@@ -137,8 +150,12 @@ async function loadReview(id) {
     if (reviewJob === id) showError(error.message);
   }
 }
+function setSubmitBusy(busy) {
+  get('start').disabled = get('original').disabled = busy;
+}
 function setReviewBusy(busy) {
-  for (const id of ['start', 'line-select', 'line-edit', 'preview-line', 'jump']) get(id).disabled = busy;
+  setSubmitBusy(busy);
+  for (const id of ['line-select', 'line-edit', 'preview-line', 'jump']) get(id).disabled = busy;
   get('apply-line').disabled = busy || !previewToken;
 }
 get('line-select').addEventListener('change', selectLine);
@@ -197,7 +214,6 @@ async function poll() {
     const job = await response.json();
     show(job);
     if (job.status === 'working') timer = setTimeout(poll, 1500);
-    else get('start').disabled = false;
   } catch {
     get('status').textContent = 'Could not reach the app. Check the WSL terminal.';
     timer = setTimeout(poll, 3500);
@@ -206,21 +222,22 @@ async function poll() {
 get('form').addEventListener('submit', async event => {
   event.preventDefault();
   if (get('start').disabled) return;
-  get('start').disabled = true;
+  const mode = event.submitter?.value || 'dub';
+  setSubmitBusy(true);
   clearTimeout(timer);
   showError('');
   try {
     const response = await fetch('/api/jobs', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({url: get('url').value, authorized: get('permission').checked}),
+      body: JSON.stringify({url: get('url').value, authorized: get('permission').checked, mode}),
     });
     const job = await response.json();
     if (!response.ok) throw new Error(job.error);
     show(job);
   } catch (error) {
     showError(error.message || 'Could not submit the request.');
-    get('start').disabled = false;
+    setSubmitBusy(false);
   }
   poll();
 });

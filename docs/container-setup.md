@@ -1,10 +1,19 @@
-# Run with Docker Compose
+# Build and run from source
+
+This path is useful when you want to change the code or try a revision without a published image. For the prebuilt image, follow the [beginner guide](../README.md).
 
 ## 1. Install the container runtime
 
 On Windows, install [Docker Desktop](https://docs.docker.com/desktop/setup/install/windows-install/), start it, and enable WSL integration for the Ubuntu distribution where you will run the commands. On Ubuntu, install [Docker Engine and the Compose plugin](https://docs.docker.com/engine/install/ubuntu/). Follow Docker's setup instructions for access to the engine.
 
-Open the folder containing `compose.yaml` and confirm the engine and Compose are available:
+If you already extracted the project, open the folder containing `compose.yaml`. To get the source with Git, install Git, open PowerShell or Terminal, and run:
+
+```text
+git clone https://github.com/krmaryum/urdu-dub-studio.git
+cd urdu-dub-studio
+```
+
+Confirm the engine and Compose are available:
 
 ```bash
 docker info
@@ -42,7 +51,9 @@ The default limit is five minutes. To allow up to 15 minutes, add this to a file
 URDU_DUB_MAX_MINUTES=15
 ```
 
-Run `docker compose up -d` again after saving any current exports. Refresh the browser and check the displayed limit. The accepted settings are whole numbers from 1 to 30. Try a six- to ten-minute clip before using the upper limit. Longer clips use more CPU time, memory, and temporary disk space. Keep the service running while processing.
+Run `docker compose up -d` again after saving any current exports. Refresh the browser and check the displayed limit. Set `URDU_DUB_MAX_MINUTES=240` to allow dubbing up to four hours. Original downloads already allow four hours.
+
+Start with a shorter dub before testing the upper limit. The app transcribes in overlapping ten-minute sections and writes the dubbed audio to disk as it goes. Allow enough temporary storage for the source video, WAV audio, and MP4 export. A multi-hour dub can run for many hours on CPU. Keep Docker running until you save the exports. An interrupted job starts from the beginning when submitted again.
 
 ## 5. Stop or update
 

@@ -86,4 +86,4 @@ To allow videos up to 15 minutes for this run, use:
 URDU_DUB_MAX_MINUTES=15 python app.py
 ```
 
-Use a whole number from 1 to 30. Check the limit displayed on the home page after restarting. Test a six- to ten-minute clip first, since local translation and speech synthesis can take substantially longer on CPU.
+Use a whole number from 1 to 240. Set it to `240` for four-hour dubbing and check the limit displayed on the home page after restarting. A long dub uses temporary disk storage for the source, WAV, and MP4. Keep the app running until you save the exports. An interrupted job starts from the beginning when submitted again.

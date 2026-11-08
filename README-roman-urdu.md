@@ -58,9 +58,9 @@ Docker tayyar app image download karta hai aur Ollama start karta hai. Pehli baa
 
 Jis video ko download karne ki ijazat ho, us ka link paste karein, checkbox tick karein aur **Download original video** chunain. Preview tayyar ho to **Download original MP4** par click karein. Is mode mein asal audio rehti hai, video 480p tak download hoti hai, aur chaar ghante tak ki videos li ja sakti hain.
 
-## 6. Lambi video ki dubbing chalu karein
+## 6. Dubbing ki limit kam karein
 
-Dubbing ki shuruati limit paanch minute hai. Isay barhane ke liye `compose.yaml` ke saath `.env` naam ki file banayein aur is mein ye line likhein:
+Dubbing ki shuruati limit **chaar ghante (240 minute)** hai. Agar aap chhoti limit rakhna chahte hain, to `compose.yaml` ke saath `.env` naam ki file banayein aur is mein ye line likhein:
 
 ```dotenv
 URDU_DUB_MAX_MINUTES=15

@@ -78,12 +78,12 @@ python app.py
 
 Open [http://localhost:8765](http://localhost:8765). Submit a short English clip you have permission to dub. Verify that the finished MP4 plays, the transcript downloads, and a previewed edit can be applied. The first run downloads Whisper and the Fasih voice. After downloading your exports, stop the app with `Ctrl+C`. Run `deactivate` to leave the virtual environment.
 
-## Enable longer videos
+## Set a shorter dubbing limit
 
-To allow videos up to 15 minutes for this run, use:
+Dubbing allows up to four hours by default. To limit dubbing to 15 minutes for this run, use:
 
 ```bash
 URDU_DUB_MAX_MINUTES=15 python app.py
 ```
 
-Use a whole number from 1 to 240. Set it to `240` for four-hour dubbing and check the limit displayed on the home page after restarting. A long dub uses temporary disk storage for the source, WAV, and MP4. Keep the app running until you save the exports. An interrupted job starts from the beginning when submitted again.
+Use a whole number from 1 to 240 and check the limit displayed on the home page after restarting. A long dub uses temporary disk storage for the source, WAV, and MP4. Keep the app running until you save the exports. An interrupted job starts from the beginning when submitted again.

@@ -23,7 +23,7 @@ from local_translation import (
 )
 
 try:
-    MAX_VIDEO_MINUTES = int(os.environ.get("URDU_DUB_MAX_MINUTES", "5"))
+    MAX_VIDEO_MINUTES = int(os.environ.get("URDU_DUB_MAX_MINUTES", "240"))
     if not 1 <= MAX_VIDEO_MINUTES <= 240:
         raise ValueError
 except ValueError:

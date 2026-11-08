@@ -43,15 +43,15 @@ A setup service marked **Exited (0)** is expected. When the app is healthy, open
 
 Start with a short English video that you have permission to dub. Confirm that the app can play the resulting MP4 and download the transcript. The first job downloads Whisper and the Fasih voice. Named volumes retain the downloaded models across normal restarts. The app keeps the current job in temporary storage, so download the outputs before stopping it.
 
-## 4. Enable longer videos
+## 4. Set a shorter dubbing limit
 
-The default limit is five minutes. To allow up to 15 minutes, add this to a file named `.env` alongside `compose.yaml`:
+Dubbing and original downloads allow up to four hours by default. To limit dubbing to 15 minutes, add this to a file named `.env` alongside `compose.yaml`:
 
 ```dotenv
 URDU_DUB_MAX_MINUTES=15
 ```
 
-Run `docker compose up -d` again after saving any current exports. Refresh the browser and check the displayed limit. Set `URDU_DUB_MAX_MINUTES=240` to allow dubbing up to four hours. Original downloads already allow four hours.
+Run `docker compose up -d` again after saving any current exports. Refresh the browser and check the displayed limit. To restore the four-hour default, remove the setting from `.env`.
 
 Start with a shorter dub before testing the upper limit. The app transcribes in overlapping ten-minute sections and writes the dubbed audio to disk as it goes. Allow enough temporary storage for the source video, WAV audio, and MP4 export. A multi-hour dub can run for many hours on CPU. Keep Docker running until you save the exports. An interrupted job starts from the beginning when submitted again.
 

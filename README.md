@@ -58,9 +58,9 @@ Docker pulls the prebuilt app image and starts Ollama. The first startup can tak
 
 Paste a link you have permission to download, tick the checkbox, and select **Download original video**. After the preview is ready, click **Download original MP4**. This mode keeps the original audio, downloads up to 480p, and accepts videos up to four hours.
 
-## 6. Enable longer dubbing
+## 6. Set a shorter dubbing limit
 
-Dubbing starts with a five-minute limit. To raise it, create a file named `.env` beside `compose.yaml` and put this line in it:
+Dubbing allows up to **four hours (240 minutes)** by default. If you prefer a shorter limit, create a file named `.env` beside `compose.yaml` and put this line in it:
 
 ```dotenv
 URDU_DUB_MAX_MINUTES=15

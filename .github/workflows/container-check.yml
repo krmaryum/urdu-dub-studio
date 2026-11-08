@@ -30,12 +30,10 @@ jobs:
             python -m pip check
             python -c "import faster_whisper, numpy, piper"
           '
-      - name: Smoke-test the web app
-        env:
-          URDU_DUB_MAX_MINUTES: "15"
+      - name: Smoke-test the web app with default limits
         run: |
           docker compose up -d --no-deps --wait --wait-timeout 90 app
-          curl -fsS http://127.0.0.1:8765/ | grep -F 'up to 15 minutes'
+          curl -fsS http://127.0.0.1:8765/ | grep -F 'up to 240 minutes for dubbing. Original downloads up to 4 hours.'
           curl -fsS http://127.0.0.1:8765/api/jobs
       - name: Clean up
         if: always()

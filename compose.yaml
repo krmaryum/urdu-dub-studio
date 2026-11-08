@@ -1,0 +1,42 @@
+services:
+  ollama:
+    image: ollama/ollama
+    volumes:
+      - ollama_models:/root/.ollama
+    healthcheck:
+      test: ["CMD-SHELL", "OLLAMA_HOST=http://127.0.0.1:11434 ollama list"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+
+  model-setup:
+    image: ollama/ollama
+    environment:
+      OLLAMA_HOST: http://ollama:11434
+    command: ["pull", "qwen3.5:4b"]
+    depends_on:
+      ollama:
+        condition: service_healthy
+
+  app:
+    build: .
+    environment:
+      URDU_DUB_HOST: 0.0.0.0
+      URDU_DUB_OLLAMA_URL: http://ollama:11434
+      URDU_DUB_MAX_MINUTES: "${URDU_DUB_MAX_MINUTES:-5}"
+    ports:
+      - "127.0.0.1:8765:8765"
+    volumes:
+      - speech_models:/home/studio/.cache/huggingface
+    depends_on:
+      model-setup:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8765/', timeout=3).close()"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+
+volumes:
+  ollama_models:
+  speech_models:

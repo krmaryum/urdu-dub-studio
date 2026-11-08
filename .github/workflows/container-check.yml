@@ -1,0 +1,42 @@
+name: Container checks
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    strategy:
+      matrix:
+        runner: [ubuntu-24.04, ubuntu-24.04-arm]
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build app image
+        run: |
+          docker compose config --quiet
+          docker compose build app
+      - name: Check bundled tools and model libraries
+        run: |
+          docker compose run --rm --no-deps app sh -ec '
+            deno --version
+            ffmpeg -version
+            python -m yt_dlp --version
+            python -m pip check
+            python -c "import faster_whisper, numpy, piper"
+          '
+      - name: Smoke-test the web app
+        env:
+          URDU_DUB_MAX_MINUTES: "15"
+        run: |
+          docker compose up -d --no-deps --wait --wait-timeout 90 app
+          curl -fsS http://127.0.0.1:8765/ | grep -F 'up to 15 minutes'
+          curl -fsS http://127.0.0.1:8765/api/jobs
+      - name: Clean up
+        if: always()
+        run: docker compose down

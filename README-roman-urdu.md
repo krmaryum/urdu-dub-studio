@@ -4,6 +4,8 @@ English YouTube video ko bol chaal ki Pakistani Urdu mein dub karein aur waqt ke
 
 [English guide](README.md)
 
+[Workshop flow in English and Roman Urdu](docs/workshop/Urdu-Dub-Studio-Workshop-Flow.md)
+
 ## 1. Docker tayyar karein
 
 - **Windows ya macOS:** Docker Desktop install karein, kholein aur engine start hone ka intezar karein. Windows par apne PC ke processor ke mutabiq installer chunain.

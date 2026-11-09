@@ -4,6 +4,8 @@ Turn an English YouTube video into a conversational Pakistani Urdu dub and a tim
 
 [Roman Urdu guide](README-roman-urdu.md)
 
+[Workshop flow in English and Roman Urdu](docs/workshop/Urdu-Dub-Studio-Workshop-Flow.md)
+
 ## 1. Get Docker ready
 
 - **Windows or macOS:** Install Docker Desktop, open it, and wait for the engine to start. On Windows, select the installer that matches your PC's processor.

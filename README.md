@@ -86,6 +86,10 @@ docker compose up -d
 
 Open [http://localhost:8765](http://localhost:8765) again. Docker keeps the downloaded models. To update, save your exports, replace `compose.yaml` with the file from the newer release in the **same folder**, then run `docker compose pull` followed by `docker compose up -d`.
 
+## Save a transcript without dubbing
+
+To get text only, paste an authorized English YouTube link, tick the permission box, choose **English** or **Roman Urdu** under **Transcript language**, and click **Transcript only**. One job produces a timestamped `.txt` file and a reading `.md` file that groups the same text into paragraphs without timestamps. The app skips voice generation and video rendering. English transcription skips Ollama as well. This mode uses the dubbing duration limit.
+
 ## More guides
 
 | Guide | Use it to |
@@ -98,3 +102,11 @@ Open [http://localhost:8765](http://localhost:8765) again. Docker keeps the down
 | [Publish a Docker release](docs/publish-image.md) | Build and distribute an image as the repository maintainer |
 
 This is a single-user app. Review technical wording and timing in the finished dub before using it.
+
+## Docker prerequisites
+
+See the [Docker installation guide](docs/docker-prerequisites.md), including [Rocky Linux 9](docs/docker-prerequisites.md#rocky-linux-9).
+
+## Known limitation
+
+On the Surface Laptop 7 (ARM64), Urdu-script transcription completed, but Roman Urdu generation with Qwen 3.5 4B timed out. The Roman Urdu editing and export workflow passed on the Dell test machine.

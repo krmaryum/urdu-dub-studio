@@ -1,0 +1,22 @@
+services:
+  app:
+    build: .
+    environment:
+      URDU_DUB_HOST: 0.0.0.0
+      URDU_DUB_OLLAMA_URL: http://host.docker.internal:11435
+      URDU_DUB_OLLAMA_MODEL: qwen3.5:2b
+      URDU_DUB_MAX_MINUTES: "240"
+    ports:
+      - "127.0.0.1:8765:8765"
+    volumes:
+      - speech_models:/home/studio/.cache/huggingface
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8765/', timeout=3).close()"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+
+volumes:
+  speech_models:
+    external: true
+    name: downloads_speech_models

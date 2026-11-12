@@ -1,0 +1,4 @@
+services:
+  app:
+    environment:
+      URDU_DUB_OLLAMA_MODEL: "qwen3.5:4b"

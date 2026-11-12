@@ -102,3 +102,7 @@ Sirf matn chahiye ho to ijazat wali English YouTube video ka link paste karein a
 | [Docker release publish karein](docs/publish-image.md) | Repo maintain karne wale ke liye image banane aur share karne ke steps |
 
 Ye app aik waqt mein aik user ke liye hai. Dub istemal karne se pehle technical alfaaz aur timing check kar lein.
+
+## Docker ki zarooriyat
+
+[Docker installation guide](docs/docker-prerequisites.md) mein [Rocky Linux 9](docs/docker-prerequisites.md#rocky-linux-9) ke steps bhi hain.

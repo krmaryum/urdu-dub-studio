@@ -102,3 +102,11 @@ To get text only, paste an authorized English YouTube link, tick the permission 
 | [Publish a Docker release](docs/publish-image.md) | Build and distribute an image as the repository maintainer |
 
 This is a single-user app. Review technical wording and timing in the finished dub before using it.
+
+## Docker prerequisites
+
+See the [Docker installation guide](docs/docker-prerequisites.md), including [Rocky Linux 9](docs/docker-prerequisites.md#rocky-linux-9).
+
+## Known limitation
+
+On the Surface Laptop 7 (ARM64), Urdu-script transcription completed, but Roman Urdu generation with Qwen 3.5 4B timed out. The Roman Urdu editing and export workflow passed on the Dell test machine.

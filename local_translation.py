@@ -6,7 +6,7 @@ from urllib.error import HTTPError, URLError
 from urllib.request import HTTPRedirectHandler, ProxyHandler, Request, build_opener
 
 OLLAMA = os.environ.get("URDU_DUB_OLLAMA_URL", "http://127.0.0.1:11434").rstrip("/")
-MODEL = "qwen3.5:4b"
+MODEL = os.environ.get("URDU_DUB_OLLAMA_MODEL", "qwen3.5:4b")
 BATCH_SIZE = 4
 REPEAT_LOOKBACK = 3
 URDU_LETTERS = re.compile(r"[ء-غف-يٹڈڑںھہے]")
@@ -160,7 +160,15 @@ def request_lines(segments, start, stop, retry=False, target_words=None, *, roma
             "Return each id in order with its Roman Urdu translation in roman. "
             "Use Latin letters, respectful aap, and everyday wording. Preserve every clause, "
             "negatives, quantities, names, and English technical terms such as DNS, CDN, and URL. "
-            "Keep each translation tied to its own segment. Do not repeat adjacent text."
+            "Keep each translation tied to its own segment. Do not repeat adjacent text. "
+            "Preserve who performs each action, what it acts on, and the order of steps. "
+            "Translate instructions directly; do not turn them into an if-condition or add actions. "
+            "If a segment is a fragment, keep its partial meaning without inventing missing details. "
+
+            "For technical removal use nikaalna or hataana; preserve safety as hifazat or safety. "
+            "Translate ensure as yaqini banana, not saaf rakhna. "
+            "Keep product names, identifiers, technical terms, and website addresses exact. "
+            "Read your translation against the English before returning it."
         )
     if retry:
         scripts = "" if roman_only else " in both scripts"
@@ -272,7 +280,7 @@ def repeats_recent_translation(roman, source, recent_lines):
 
 def translate_segments(segments, update, *, roman_only=False):
     translations = []
-    batch_size = 2 if roman_only else BATCH_SIZE
+    batch_size = 1 if roman_only else BATCH_SIZE
     for start in range(0, len(segments), batch_size):
         stop = min(start + batch_size, len(segments))
         update(f"Translating into conversational Urdu ({stop}/{len(segments)} segments).")

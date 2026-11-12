@@ -32,9 +32,9 @@ button:disabled{opacity:.58;cursor:wait}:focus-visible{outline:2px solid white;o
       <h2 id="input-title">Create an Urdu dub</h2>
       <form id="form">
         <label for="url">YouTube video URL</label>
-        <input class="url" id="url" type="url" placeholder="https://www.youtube.com/watch?v=…" required maxlength="1500" aria-describedby="hint">
+        <input class="url" id="url" type="url" placeholder="https://www.youtube.com/watch?v=…" maxlength="1500" aria-describedby="hint">
         <p class="hint" id="hint">English video or Short, up to {{ max_video_minutes }} minutes for dubbing. Original downloads up to {{ max_download_hours }} hours. Transcripts use the dubbing limit.</p>
-        <label class="confirm"><input id="permission" type="checkbox" required> I have permission to download this video and to dub it if I choose dubbing.</label>
+        <label class="confirm"><input id="permission" type="checkbox" required> I have permission to process this recording and to dub it if I choose dubbing.</label>
         <div class="downloads">
           <button id="start" type="submit" value="dub">Start dubbing</button>
           <button id="original" type="submit" value="download">Download original video</button>
@@ -42,8 +42,19 @@ button:disabled{opacity:.58;cursor:wait}:focus-visible{outline:2px solid white;o
         <p class="hint"><label for="transcript-language">Transcript language</label>
           <select class="url" id="transcript-language">
             <option value="transcript-en">English</option>
+            <option value="transcript-urdu-script">Urdu script (Urdu audio)</option>
             <option value="transcript-ur">Roman Urdu</option>
+            <option value="transcript-bilingual">English + Roman Urdu</option>
           </select>
+        </p>
+        <div id="technical-terms-field" hidden>
+          <label for="technical-terms">Technical terms (optional)</label>
+          <input class="url" id="technical-terms" maxlength="300" placeholder="Active Directory, Windows Server">
+        </div>
+        <p class="hint">
+          <label for="local-media">Or choose a local file for Transcript only</label>
+          <input class="url" id="local-media" type="file" accept=".mp4,.mov,.webm,.mkv,.m4a,.mp3,.wav">
+          <span>If a file is selected, Transcript only uses it. Maximum 256 MB.</span>
         </p>
         <button id="transcript-only" type="submit" value="transcript">Transcript only</button>
         <p id="error" class="error" role="alert" hidden></p>
@@ -60,6 +71,8 @@ button:disabled{opacity:.58;cursor:wait}:focus-visible{outline:2px solid white;o
         <a id="download" hidden>Download MP4</a>
         <a id="transcript" hidden>Download Roman Urdu transcript</a>
         <a id="reading-transcript" hidden>Download reading transcript (.md)</a>
+        <a id="paired-txt" hidden>Download Urdu script + Roman Urdu (.txt)</a>
+        <a id="paired-md" hidden>Download Urdu script + Roman Urdu (.md)</a>
       </div>
     </section>
   </div>
@@ -68,12 +81,23 @@ button:disabled{opacity:.58;cursor:wait}:focus-visible{outline:2px solid white;o
     <label for="line-select">Choose a timestamp</label>
     <select class="url" id="line-select"></select>
     <p class="hint" id="line-source"></p>
-    <label for="line-edit">Roman Urdu</label>
+    <label id="line-edit-label" for="line-edit">Roman Urdu</label>
     <textarea class="url" id="line-edit" maxlength="800" lang="ur-Latn"></textarea>
     <div class="downloads">
       <button id="jump" type="button">Jump to this line</button>
       <button id="preview-line" type="button">Preview edited line</button>
+      <button id="save-transcript-line" type="button" hidden>Save transcript line</button>
       <button id="apply-line" type="button" disabled>Apply to video</button>
+    </div>
+    <div class="downloads" id="roman-export-controls" hidden>
+      <button id="generate-roman" type="button">Generate Roman Urdu from saved text</button>
+    </div>
+    <p class="hint" id="roman-stage" role="status" hidden></p>
+    <div id="paired-editor" hidden>
+      <label for="paired-line-edit">Generated Roman Urdu</label>
+      <textarea class="url" id="paired-line-edit" maxlength="3000" lang="ur-Latn"></textarea>
+      <button id="save-paired-line" type="button">Save Roman Urdu line</button>
+      <p class="hint" id="paired-status" role="status"></p>
     </div>
     <audio id="line-audio" controls hidden></audio>
     <p class="hint" id="review-status" role="status"></p>
@@ -83,7 +107,7 @@ button:disabled{opacity:.58;cursor:wait}:focus-visible{outline:2px solid white;o
 <script>
 const get = id => document.getElementById(id);
 let timer;
-let reviewJob, reviewLines = [], previewToken;
+let reviewJob, reviewLines = [], previewToken, reviewRevision, reviewUrduScript = false, pairedRoman = null;
 function showError(message) {
   get('error').textContent = message;
   get('error').hidden = !message;
@@ -102,7 +126,7 @@ function show(job) {
   }
   if (!job.id) return;
   const original = job.mode === 'download';
-  const transcriptOnly = job.mode === 'transcript-en' || job.mode === 'transcript-ur';
+  const transcriptOnly = job.mode?.startsWith('transcript-');
   const ready = job.status === 'ready';
   const hasVideo = ready && !transcriptOnly;
   get('result-title').textContent = transcriptOnly ? 'Transcript' : original ? 'Original video' : 'Dubbed video';
@@ -126,8 +150,29 @@ function show(job) {
       : 'Download Roman Urdu transcript';
     if (transcriptOnly) get('reading-transcript').href = '/transcript/' + id + revision + '&format=reading';
   }
-  if (hasVideo && !original) {
-    if (reviewJob !== job.id) loadReview(job.id);
+  reviewUrduScript = job.mode === 'transcript-urdu-script';
+  const editableTranscript = ready && (reviewUrduScript || job.mode === 'transcript-bilingual');
+  get('line-edit-label').textContent = reviewUrduScript ? 'Urdu script' : 'Roman Urdu';
+  get('line-edit').lang = reviewUrduScript ? 'ur' : 'ur-Latn';
+  get('line-edit').dir = reviewUrduScript ? 'rtl' : 'ltr';
+  get('save-transcript-line').hidden = !editableTranscript;
+  get('roman-export-controls').hidden = !ready || !reviewUrduScript;
+  get('roman-stage').hidden = !ready || !reviewUrduScript || !job.roman_stage;
+  get('roman-stage').textContent = job.roman_stage || '';
+  get('generate-roman').disabled = Boolean(job.roman_busy || job.roman_ready);
+  get('paired-txt').hidden = get('paired-md').hidden = !job.roman_ready;
+  if (!job.roman_ready) {
+    pairedRoman = null;
+    get('paired-editor').hidden = true;
+  }
+  if (job.roman_ready) {
+    get('paired-txt').href = '/transcript/' + id + revision + '&script=paired';
+    get('paired-md').href = get('paired-txt').href + '&format=reading';
+  }
+  if (reviewUrduScript && ready) setReviewBusy(Boolean(job.roman_busy));
+  for (const id of ['jump', 'preview-line', 'apply-line']) get(id).hidden = editableTranscript;
+  if ((hasVideo && !original) || editableTranscript) {
+    if (reviewJob !== job.id || (job.roman_ready && !pairedRoman)) loadReview(job.id);
   } else {
     get('review').hidden = true;
     reviewJob = null;
@@ -149,25 +194,38 @@ function clearPreview() {
   get('line-audio').removeAttribute('src');
   get('line-audio').load();
 }
+function showPairedLine() {
+  const text = pairedRoman?.[Number(get('line-select').value)];
+  get('paired-editor').hidden = typeof text !== 'string';
+  get('paired-line-edit').value = text || '';
+  get('paired-status').textContent = '';
+}
 function selectLine() {
   const line = reviewLines[Number(get('line-select').value)];
   if (!line) return;
   clearPreview();
-  get('line-source').textContent = 'English source · ' + line.english;
+  const source = get('line-source');
+  source.textContent = (reviewUrduScript ? 'Original transcription · ' : 'English source · ') + line.english;
+  source.dir = reviewUrduScript ? 'rtl' : 'ltr';
   get('line-edit').value = line.roman;
+  showPairedLine();
   get('review-status').textContent = '';
 }
 async function loadReview(id) {
+  const previousSelection = reviewJob === id ? get('line-select').value : null;
   reviewJob = id;
   try {
     const data = await jsonRequest('/api/jobs/' + encodeURIComponent(id) + '/lines');
     if (reviewJob !== id) return;
     reviewLines = data.lines;
+    reviewRevision = data.revision;
+    pairedRoman = data.paired_roman || null;
     get('line-select').replaceChildren(...reviewLines.map((line, index) => {
       const mins = Math.floor(line.start / 60);
       const secs = String(Math.floor(line.start % 60)).padStart(2, '0');
       return new Option(mins + ':' + secs + ' · ' + line.english.slice(0, 80), index);
     }));
+    if (previousSelection !== null) get('line-select').value = previousSelection;
     get('review').hidden = !reviewLines.length;
     selectLine();
   } catch (error) {
@@ -175,11 +233,11 @@ async function loadReview(id) {
   }
 }
 function setSubmitBusy(busy) {
-  for (const id of ['start', 'original', 'transcript-only', 'transcript-language']) get(id).disabled = busy;
+  for (const id of ['start', 'original', 'transcript-only', 'transcript-language', 'technical-terms', 'local-media']) get(id).disabled = busy;
 }
 function setReviewBusy(busy) {
   setSubmitBusy(busy);
-  for (const id of ['line-select', 'line-edit', 'preview-line', 'jump']) get(id).disabled = busy;
+  for (const id of ['line-select', 'line-edit', 'preview-line', 'jump', 'save-transcript-line', 'paired-line-edit', 'save-paired-line']) get(id).disabled = busy;
   get('apply-line').disabled = busy || !previewToken;
 }
 get('line-select').addEventListener('change', selectLine);
@@ -231,34 +289,134 @@ get('apply-line').addEventListener('click', async () => {
     setReviewBusy(false);
   }
 });
+get('save-transcript-line').addEventListener('click', async () => {
+  const index = Number(get('line-select').value);
+  const roman = get('line-edit').value.trim().replace(/\s+/g, ' ');
+  const status = get('review-status');
+  if (!roman) {
+    status.textContent = 'Enter the edited line first.';
+    return;
+  }
+  setReviewBusy(true);
+  try {
+    const base = '/api/jobs/' + encodeURIComponent(reviewJob);
+    const job = await jsonRequest(base + '/lines/' + index + '/transcript', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({roman, revision: reviewRevision}),
+    });
+    reviewRevision = job.revision;
+    reviewLines[index].roman = roman;
+    get('line-edit').value = roman;
+    show(job);
+    status.textContent = 'Saved. Both downloads include this edit.';
+  } catch (error) {
+    status.textContent = error.message;
+  } finally {
+    setReviewBusy(false);
+  }
+});
+get('save-paired-line').addEventListener('click', async () => {
+  const index = Number(get('line-select').value);
+  const input = get('paired-line-edit');
+  const roman = input.value.trim().replace(/\s+/g, ' ');
+  const status = get('paired-status');
+  if (!roman) {
+    status.textContent = 'Enter the corrected Roman Urdu first.';
+    return;
+  }
+  setReviewBusy(true);
+  try {
+    const base = '/api/jobs/' + encodeURIComponent(reviewJob);
+    const job = await jsonRequest(base + '/lines/' + index + '/paired-roman', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({roman, revision: reviewRevision}),
+    });
+    reviewRevision = job.revision;
+    pairedRoman[index] = roman;
+    input.value = roman;
+    show(job);
+    status.textContent = 'Saved. Both paired downloads include this edit.';
+  } catch (error) {
+    status.textContent = error.message;
+  } finally {
+    setReviewBusy(false);
+  }
+});
+get('generate-roman').addEventListener('click', async () => {
+  if (!reviewJob) return;
+  const saved = reviewLines[Number(get('line-select').value)]?.roman;
+  if (get('line-edit').value.trim().replace(/\s+/g, ' ') !== saved) {
+    get('review-status').textContent = 'Save this line before generating Roman Urdu.';
+    return;
+  }
+  const button = get('generate-roman');
+  button.disabled = true;
+  setReviewBusy(true);
+  clearTimeout(timer);
+  try {
+    const job = await jsonRequest('/api/jobs/' + encodeURIComponent(reviewJob) + '/roman-export', {method: 'POST'});
+    show(job);
+    poll();
+  } catch (error) {
+    get('review-status').textContent = error.message;
+    setReviewBusy(false);
+    button.disabled = false;
+  }
+});
 async function poll() {
   try {
     const response = await fetch('/api/jobs', {cache: 'no-store'});
     if (!response.ok) throw new Error();
     const job = await response.json();
     show(job);
-    if (job.status === 'working') timer = setTimeout(poll, 1500);
+    if (job.status === 'working' || job.roman_busy) timer = setTimeout(poll, 1500);
   } catch {
     get('status').textContent = 'Could not reach the app. Check the WSL terminal.';
     timer = setTimeout(poll, 3500);
   }
 }
+get('transcript-language').addEventListener('change', () => {
+  get('technical-terms-field').hidden = get('transcript-language').value !== 'transcript-urdu-script';
+});
 get('form').addEventListener('submit', async event => {
   event.preventDefault();
   if (get('start').disabled) return;
   const action = event.submitter?.value || 'dub';
   const mode = action === 'transcript' ? get('transcript-language').value : action;
+  const file = action === 'transcript' ? get('local-media').files[0] : null;
+  if (!file && !get('url').value.trim()) {
+    showError('Enter a YouTube URL or choose a local file for Transcript only.');
+    get('url').focus();
+    return;
+  }
+  if (file && file.size > 256 * 1024 * 1024) {
+    showError('Choose a file no larger than 256 MB.');
+    return;
+  }
   setSubmitBusy(true);
   clearTimeout(timer);
   showError('');
   try {
-    const response = await fetch('/api/jobs', {
+    const payload = {
+      url: get('url').value,
+      authorized: get('permission').checked,
+      mode,
+      technical_terms: mode === 'transcript-urdu-script' ? get('technical-terms').value : '',
+    };
+    let options = {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({url: get('url').value, authorized: get('permission').checked, mode}),
-    });
-    const job = await response.json();
-    if (!response.ok) throw new Error(job.error);
+      body: JSON.stringify(payload),
+    };
+    if (file) {
+      const form = new FormData();
+      for (const [key, value] of Object.entries(payload)) form.append(key, value);
+      form.append('media', file);
+      options = {method: 'POST', body: form};
+    }
+    const job = await jsonRequest('/api/jobs', options);
     show(job);
   } catch (error) {
     showError(error.message || 'Could not submit the request.');

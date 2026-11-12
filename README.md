@@ -86,6 +86,10 @@ docker compose up -d
 
 Open [http://localhost:8765](http://localhost:8765) again. Docker keeps the downloaded models. To update, save your exports, replace `compose.yaml` with the file from the newer release in the **same folder**, then run `docker compose pull` followed by `docker compose up -d`.
 
+## Save a transcript without dubbing
+
+To get text only, paste an authorized English YouTube link, tick the permission box, choose **English** or **Roman Urdu** under **Transcript language**, and click **Transcript only**. One job produces a timestamped `.txt` file and a reading `.md` file that groups the same text into paragraphs without timestamps. The app skips voice generation and video rendering. English transcription skips Ollama as well. This mode uses the dubbing duration limit.
+
 ## More guides
 
 | Guide | Use it to |

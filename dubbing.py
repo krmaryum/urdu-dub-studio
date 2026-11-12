@@ -154,6 +154,27 @@ def write_transcript(path, lines):
     path.write_text("\n".join(result) + "\n", encoding="utf-8")
 
 
+def write_reading_transcript(path, title, segments, texts):
+    paragraphs = []
+    paragraph = []
+    word_count = 0
+    previous_end = None
+    for segment, text in zip(segments, texts):
+        if paragraph and (
+            segment.start - previous_end >= 2
+            or (word_count >= 80 and paragraph[-1].endswith((".", "?", "!")))
+        ):
+            paragraphs.append(" ".join(paragraph))
+            paragraph = []
+            word_count = 0
+        paragraph.append(text)
+        word_count += len(text.split())
+        previous_end = segment.end
+    if paragraph:
+        paragraphs.append(" ".join(paragraph))
+    path.write_text("\n\n".join([f"# {title}", *paragraphs]) + "\n", encoding="utf-8")
+
+
 def run(command, error, timeout=180, input_data=None):
     try:
         return subprocess.run(command, check=True, capture_output=True, timeout=timeout, input=input_data).stdout
@@ -164,11 +185,15 @@ def run(command, error, timeout=180, input_data=None):
         raise DubError(error) from exc
 
 
-def download_video(source, folder, *, original=False):
+def download_video(source, folder, *, original=False, audio_only=False):
     max_minutes = MAX_DOWNLOAD_MINUTES if original else MAX_VIDEO_MINUTES
     limit_message = f"Choose a video up to {max_minutes} minutes long."
     formats = "bv[height<=480][ext=mp4]+ba[ext=m4a]"
-    if original:
+    extensions = {".mp4", ".mkv", ".webm"}
+    if audio_only:
+        formats = "ba[ext=m4a]/ba[ext=webm]/b"
+        extensions.add(".m4a")
+    elif original:
         formats += "/b[height<=480][ext=mp4]"
     else:
         formats += "/b[height<=480]/bv[height<=480]+ba"
@@ -184,7 +209,7 @@ def download_video(source, folder, *, original=False):
         "-o", str(folder / "source.%(ext)s"), "--", source,
     ], "Could not import the YouTube video. Check the link, access and yt-dlp version.",
         timeout=max(180, max_minutes * 36))
-    video = next((p for p in folder.glob("source.*") if p.suffix in {".mp4", ".mkv", ".webm"}), None)
+    video = next((p for p in folder.glob("source.*") if p.suffix in extensions), None)
     if video is None:
         raise DubError(f"{limit_message} Live streams are excluded.")
     if original and video.suffix != ".mp4":
@@ -474,6 +499,34 @@ def render(video, audio, output, copy_video=False):
     ], "Could not export the dubbed MP4.", timeout=max(300, MAX_SECONDS))
 
 
+def import_speech(source, folder, update, *, audio_only=False):
+    update("Importing audio from YouTube." if audio_only else "Importing the YouTube video.")
+    media, duration = download_video(source, folder, audio_only=audio_only)
+    segments = group_speech(transcribe_english(media, duration, update))
+    if not segments:
+        raise DubError("No clear English speech was detected.")
+    return media, duration, segments
+
+
+def make_transcript(source, output, update, *, roman_urdu):
+    try:
+        if roman_urdu:
+            check_translation_model()
+        with TemporaryDirectory(prefix="source-", dir=output.parent) as temp:
+            _, _, segments = import_speech(source, Path(temp), update, audio_only=True)
+        if roman_urdu:
+            translations = translate_segments(segments, update, roman_only=True)
+            texts = [roman for _, roman in translations]
+            title = "Roman Urdu transcript"
+        else:
+            texts = [segment.text for segment in segments]
+            title = "English transcript"
+        write_transcript(output, ((segment.start, text) for segment, text in zip(segments, texts)))
+        write_reading_transcript(output.with_suffix(".md"), title, segments, texts)
+    except TranslationError as error:
+        raise DubError(str(error)) from error
+
+
 def make_dub(source, output, update):
     try:
         check_translation_model()
@@ -481,12 +534,7 @@ def make_dub(source, output, update):
         raise DubError(str(error)) from error
 
     with TemporaryDirectory(prefix="source-", dir=output.parent) as temp:
-        folder = Path(temp)
-        update("Importing the YouTube video.")
-        video, duration = download_video(source, folder)
-        segments = group_speech(transcribe_english(video, duration, update))
-        if not segments:
-            raise DubError("No clear English speech was detected.")
+        video, duration, segments = import_speech(source, Path(temp), update)
         audio = output.with_suffix(".wav")
         try:
             translations = translate_segments(segments, update)

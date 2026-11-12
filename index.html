@@ -33,22 +33,33 @@ button:disabled{opacity:.58;cursor:wait}:focus-visible{outline:2px solid white;o
       <form id="form">
         <label for="url">YouTube video URL</label>
         <input class="url" id="url" type="url" placeholder="https://www.youtube.com/watch?v=…" required maxlength="1500" aria-describedby="hint">
-        <p class="hint" id="hint">English video or Short, up to {{ max_video_minutes }} minutes for dubbing. Original downloads up to {{ max_download_hours }} hours.</p>
+        <p class="hint" id="hint">English video or Short, up to {{ max_video_minutes }} minutes for dubbing. Original downloads up to {{ max_download_hours }} hours. Transcripts use the dubbing limit.</p>
         <label class="confirm"><input id="permission" type="checkbox" required> I have permission to download this video and to dub it if I choose dubbing.</label>
         <div class="downloads">
           <button id="start" type="submit" value="dub">Start dubbing</button>
           <button id="original" type="submit" value="download">Download original video</button>
         </div>
+        <p class="hint"><label for="transcript-language">Transcript language</label>
+          <select class="url" id="transcript-language">
+            <option value="transcript-en">English</option>
+            <option value="transcript-ur">Roman Urdu</option>
+          </select>
+        </p>
+        <button id="transcript-only" type="submit" value="transcript">Transcript only</button>
         <p id="error" class="error" role="alert" hidden></p>
       </form>
     </section>
     <section class="panel" aria-labelledby="result-title">
       <h2 id="result-title">Dubbed video</h2>
-      <div class="result"><p id="status" role="status">Progress will appear here.</p></div>
+      <div class="result">
+        <p id="status" role="status">Progress will appear here.</p>
+        <p id="elapsed" class="hint" hidden></p>
+      </div>
       <video id="player" controls playsinline hidden></video>
       <div class="downloads">
         <a id="download" hidden>Download MP4</a>
         <a id="transcript" hidden>Download Roman Urdu transcript</a>
+        <a id="reading-transcript" hidden>Download reading transcript (.md)</a>
       </div>
     </section>
   </div>
@@ -78,33 +89,46 @@ function showError(message) {
   get('error').hidden = !message;
 }
 function show(job) {
+  const elapsed = get('elapsed');
+  elapsed.hidden = !Number.isInteger(job.elapsed_seconds);
+  if (!elapsed.hidden) {
+    const seconds = job.elapsed_seconds;
+    const parts = [Math.floor(seconds / 60), seconds % 60];
+    if (seconds >= 3600) {
+      parts[0] %= 60;
+      parts.unshift(Math.floor(seconds / 3600));
+    }
+    elapsed.textContent = 'Elapsed time · ' + parts.map(value => String(value).padStart(2, '0')).join(':');
+  }
   if (!job.id) return;
   const original = job.mode === 'download';
-  get('result-title').textContent = original ? 'Original video' : 'Dubbed video';
+  const transcriptOnly = job.mode === 'transcript-en' || job.mode === 'transcript-ur';
+  const ready = job.status === 'ready';
+  const hasVideo = ready && !transcriptOnly;
+  get('result-title').textContent = transcriptOnly ? 'Transcript' : original ? 'Original video' : 'Dubbed video';
   get('status').textContent = job.stage;
   setSubmitBusy(job.status === 'working');
-  if (job.status === 'ready') {
-    const path = '/video/' + encodeURIComponent(job.id);
-    const revision = '?v=' + job.revision;
+  const id = encodeURIComponent(job.id);
+  const revision = '?v=' + job.revision;
+  get('player').hidden = get('download').hidden = !hasVideo;
+  get('transcript').hidden = !ready || original;
+  get('reading-transcript').hidden = !ready || !transcriptOnly;
+  if (hasVideo) {
+    const path = '/video/' + id;
     if (get('player').getAttribute('src') !== path + revision) get('player').src = path + revision;
-    get('player').hidden = false;
     get('download').href = path + revision + '&download=1';
     get('download').textContent = original ? 'Download original MP4' : 'Download MP4';
-    get('download').hidden = false;
-    get('transcript').hidden = original;
-    if (original) {
-      get('review').hidden = true;
-      reviewJob = null;
-      reviewLines = [];
-      clearPreview();
-    } else {
-      get('transcript').href = '/transcript/' + encodeURIComponent(job.id) + revision;
-      if (reviewJob !== job.id) loadReview(job.id);
-    }
+  }
+  if (ready && !original) {
+    get('transcript').href = '/transcript/' + id + revision;
+    get('transcript').textContent = transcriptOnly
+      ? 'Download timestamped transcript (.txt)'
+      : 'Download Roman Urdu transcript';
+    if (transcriptOnly) get('reading-transcript').href = '/transcript/' + id + revision + '&format=reading';
+  }
+  if (hasVideo && !original) {
+    if (reviewJob !== job.id) loadReview(job.id);
   } else {
-    get('player').hidden = true;
-    get('download').hidden = true;
-    get('transcript').hidden = true;
     get('review').hidden = true;
     reviewJob = null;
     reviewLines = [];
@@ -151,7 +175,7 @@ async function loadReview(id) {
   }
 }
 function setSubmitBusy(busy) {
-  get('start').disabled = get('original').disabled = busy;
+  for (const id of ['start', 'original', 'transcript-only', 'transcript-language']) get(id).disabled = busy;
 }
 function setReviewBusy(busy) {
   setSubmitBusy(busy);
@@ -222,7 +246,8 @@ async function poll() {
 get('form').addEventListener('submit', async event => {
   event.preventDefault();
   if (get('start').disabled) return;
-  const mode = event.submitter?.value || 'dub';
+  const action = event.submitter?.value || 'dub';
+  const mode = action === 'transcript' ? get('transcript-language').value : action;
   setSubmitBusy(true);
   clearTimeout(timer);
   showError('');

@@ -86,6 +86,10 @@ docker compose up -d
 
 Browser mein dobara [http://localhost:8765](http://localhost:8765) kholein. Docker download kiye hue models sambhal kar rakhta hai. Update ke liye pehle exports save karein. Phir naye release ki `compose.yaml` ko **usi folder** mein purani file ki jagah rakh dein. Pehle `docker compose pull` aur phir `docker compose up -d` chalayein.
 
+## Dubbing ke baghair transcript save karein
+
+Sirf matn chahiye ho to ijazat wali English YouTube video ka link paste karein aur checkbox tick karein. **Transcript language** mein **English** ya **Roman Urdu** chunain aur **Transcript only** par click karein. Aik hi job se timestamps wali `.txt` file aur parhne ke liye `.md` file milti hai. Markdown file mein wohi matn baghair timestamps ke paragraphs mein hota hai. Is mode mein nayi awaaz aur dubbed video nahi bante. English transcript ke liye Ollama bhi istemal nahi hota. Is option par dubbing wali duration limit lagti hai.
+
 ## Mazeed rehnumai
 
 | Guide | Is mein aap ko milega |

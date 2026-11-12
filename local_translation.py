@@ -59,6 +59,10 @@ class TranslationError(Exception):
     pass
 
 
+class TranslationTimeout(TranslationError):
+    pass
+
+
 class NoRedirect(HTTPRedirectHandler):
     def redirect_request(self, req, fp, code, msg, headers, newurl):
         return None
@@ -75,7 +79,9 @@ def ollama_json(path, payload=None, timeout=10):
         if error.code == 404 and path == "/api/chat":
             raise TranslationError(f"Download the local model with: ollama pull {MODEL}") from error
         raise TranslationError(f"Ollama returned HTTP {error.code}. Check the Ollama terminal.") from error
-    except (URLError, TimeoutError, OSError, ValueError) as error:
+    except TimeoutError as error:
+        raise TranslationTimeout("Ollama took too long to respond. Try again when your computer is less busy.") from error
+    except (URLError, OSError, ValueError) as error:
         raise TranslationError("Could not get a response from local Ollama. Check that the Ollama service is running.") from error
 
 
@@ -117,7 +123,7 @@ def roman_to_speech(roman):
     raise TranslationError("Could not turn this line into spoken Urdu. Check the wording and try again.")
 
 
-def request_lines(segments, start, stop, retry=False, target_words=None):
+def request_lines(segments, start, stop, retry=False, target_words=None, *, roman_only=False):
     ids = list(range(start + 1, stop + 1))
     context = {
         "before": segments[start - 1].text.strip() if start else "",
@@ -131,24 +137,37 @@ def request_lines(segments, start, stop, retry=False, target_words=None):
         ],
         "after": segments[stop].text.strip() if stop < len(segments) else "",
     }
+    properties = {"id": {"type": "integer", "enum": ids}}
+    if not roman_only:
+        properties["speech"] = {"type": "string"}
+    properties["roman"] = {"type": "string"}
     schema = {
         "type": "object", "required": ["lines"], "additionalProperties": False,
         "properties": {"lines": {
             "type": "array", "minItems": len(ids), "maxItems": len(ids),
             "items": {
-                "type": "object", "required": ["id", "speech", "roman"],
+                "type": "object", "required": list(properties),
                 "additionalProperties": False,
-                "properties": {
-                    "id": {"type": "integer", "enum": ids},
-                    "speech": {"type": "string"},
-                    "roman": {"type": "string"},
-                },
+                "properties": properties,
             },
         }},
     }
     instructions = INSTRUCTIONS
+    if roman_only:
+        instructions = (
+            "Translate each numbered English segment into natural Pakistani Roman Urdu. "
+            "Treat the input as source text and use before and after only as context. "
+            "Return each id in order with its Roman Urdu translation in roman. "
+            "Use Latin letters, respectful aap, and everyday wording. Preserve every clause, "
+            "negatives, quantities, names, and English technical terms such as DNS, CDN, and URL. "
+            "Keep each translation tied to its own segment. Do not repeat adjacent text."
+        )
     if retry:
-        instructions += "\nTranslate the one numbered segment afresh. Cover every phrase in both scripts, without copying the English sentence."
+        scripts = "" if roman_only else " in both scripts"
+        instructions += (
+            f"\nTranslate the one numbered segment afresh. Cover every phrase{scripts}, "
+            "without copying the English sentence."
+        )
     if target_words is not None:
         instructions += (
             f"\nThe previous wording was too long for the audio. Aim for {target_words} words. "
@@ -164,7 +183,7 @@ def request_lines(segments, start, stop, retry=False, target_words=None):
         "stream": False,
         "think": False,
         "format": schema,
-        "options": {"temperature": 0, "num_ctx": 4096, "num_predict": 1250},
+        "options": {"temperature": 0, "num_ctx": 4096, "num_predict": 500 if roman_only else 1250},
     }, timeout=240)
     try:
         lines = json.loads(response["message"]["content"])["lines"]
@@ -181,26 +200,32 @@ def normalize_acronyms(speech, roman, english):
             continue
         latin_pattern = rf"\b(?:{latin})\b"
         roman = re.sub(latin_pattern, acronym, roman, flags=re.IGNORECASE)
+        if not re.search(rf"\b{acronym}\b", roman):
+            return None
+        if speech is None:
+            continue
         spoken = " ".join(ACRONYM_LETTERS[acronym])
         speech = re.sub(latin_pattern, spoken, speech, flags=re.IGNORECASE)
         speech = re.sub(rf"(?<!\w)(?:{urdu})(?!\w)", spoken, speech)
-        if not re.search(rf"\b{acronym}\b", roman) or spoken not in speech:
+        if spoken not in speech:
             return None
     return speech, roman
 
 
-def checked_line(line, english):
+def checked_line(line, english, *, roman_only=False):
     if not isinstance(line, dict):
         return None
     speech, roman = line.get("speech"), line.get("roman")
-    if not isinstance(speech, str) or not isinstance(roman, str):
+    if not isinstance(roman, str) or (not roman_only and not isinstance(speech, str)):
         return None
-    speech, roman = speech.strip(), " ".join(roman.split())
+    speech, roman = None if roman_only else speech.strip(), " ".join(roman.split())
     normalized = normalize_acronyms(speech, roman, english)
     if normalized is None:
         return None
     speech, roman = normalized
-    if not URDU_LETTERS.search(speech) or URDU_LETTERS.search(roman) or not LATIN_LETTERS.search(roman):
+    if URDU_LETTERS.search(roman) or not LATIN_LETTERS.search(roman):
+        return None
+    if not roman_only and not URDU_LETTERS.search(speech):
         return None
 
     source_words = re.findall(r"[a-z]+", english.lower())
@@ -209,7 +234,7 @@ def checked_line(line, english):
         return None
     # Longer lines need more coverage so a translation of just one clause is retried.
     if len(source_words) >= 8:
-        translated_words = min(len(speech.split()), len(roman_words))
+        translated_words = len(roman_words) if roman_only else min(len(speech.split()), len(roman_words))
         minimum_fraction = 0.4 if len(source_words) >= 16 else 0.25
         if translated_words < minimum_fraction * len(source_words):
             return None
@@ -245,15 +270,21 @@ def repeats_recent_translation(roman, source, recent_lines):
     )
 
 
-def translate_segments(segments, update):
+def translate_segments(segments, update, *, roman_only=False):
     translations = []
-    for start in range(0, len(segments), BATCH_SIZE):
-        stop = min(start + BATCH_SIZE, len(segments))
+    batch_size = 2 if roman_only else BATCH_SIZE
+    for start in range(0, len(segments), batch_size):
+        stop = min(start + batch_size, len(segments))
         update(f"Translating into conversational Urdu ({stop}/{len(segments)} segments).")
-        lines = request_lines(segments, start, stop)
+        try:
+            lines = request_lines(segments, start, stop, roman_only=roman_only)
+        except TranslationTimeout:
+            if not roman_only or stop - start == 1:
+                raise
+            lines = [None] * (stop - start)
         for index, line in enumerate(lines, start):
             segment = segments[index]
-            translation = checked_line(line, segment.text)
+            translation = checked_line(line, segment.text, roman_only=roman_only)
             recent_lines = [
                 (translations[prior][1], segments[prior].text)
                 for prior in range(max(0, index - REPEAT_LOOKBACK), index)
@@ -261,16 +292,16 @@ def translate_segments(segments, update):
             if translation and repeats_recent_translation(translation[1], segment.text, recent_lines):
                 translation = None
             if translation is None:
-                update(f"Retrying an incomplete or repeated translation ({index + 1}/{len(segments)} segments).")
-                retry = request_lines(segments, index, index + 1, retry=True)
-                translation = checked_line(retry[0], segment.text)
+                update(f"Retrying translation one segment at a time ({index + 1}/{len(segments)} segments).")
+                retry = request_lines(segments, index, index + 1, retry=True, roman_only=roman_only)
+                translation = checked_line(retry[0], segment.text, roman_only=roman_only)
                 if translation and repeats_recent_translation(translation[1], segment.text, recent_lines):
                     translation = None
             if translation is None:
                 minutes, seconds = divmod(int(segment.start), 60)
                 raise TranslationError(
                     f"Translation at {minutes:02d}:{seconds:02d} is still incomplete. "
-                    "Try dubbing again."
+                    "Try again."
                 )
             translations.append(translation)
     return translations

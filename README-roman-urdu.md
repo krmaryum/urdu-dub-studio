@@ -106,3 +106,36 @@ Ye app aik waqt mein aik user ke liye hai. Dub istemal karne se pehle technical 
 ## Docker ki zarooriyat
 
 [Docker installation guide](docs/docker-prerequisites.md) mein [Rocky Linux 9](docs/docker-prerequisites.md#rocky-linux-9) ke steps bhi hain.
+
+## Try it on a borrowed computer
+
+Use a computer you have permission to use. Docker and Docker Compose should
+already be installed. The release runs Ollama in a container, so there is
+no separate Ollama installation.
+
+1. Download `compose.yaml` from the [release page](https://github.com/krmaryum/urdu-dub-studio/releases/tag/v0.2.0)
+   into a new folder. Open a terminal in that folder.
+2. Note which Docker images are already installed, then start the app with
+   an unused project name. Use the same name for cleanup.
+
+   ```bash
+   docker image ls
+   docker compose -p urdu-dub-practice up -d
+   ```
+
+3. Once the app is healthy, open [http://localhost:8765](http://localhost:8765).
+4. When you finish, save any videos or transcripts you want to keep. From
+   the same folder, remove the practice containers, network, and model volumes.
+
+   ```bash
+   docker compose -p urdu-dub-practice down --volumes
+   docker compose -p urdu-dub-practice ps -a
+   ```
+
+5. Remove an app or Ollama image only if it was downloaded for this session
+   and no other project needs it. Use `docker image rm IMAGE:TAG` without
+   `--force`. Then delete the practice folder and any unwanted exports.
+
+On Linux, prefix the Docker commands with `sudo` if your setup requires it.
+For an exact reset, use an approved disposable VM and revert its snapshot
+or discard the VM after testing.
